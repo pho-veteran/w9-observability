@@ -1,58 +1,5 @@
 # W9 Observability - Terraform Setup
 
-## Quick Start
-
-### 1. Cấu hình
-
-```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars
-```
-
-Sửa `terraform.tfvars`:
-```hcl
-alert_email   = "your-real-email@gmail.com"
-aws_region    = "ap-southeast-1"
-instance_type = "t2.micro"
-key_name      = "your-key-pair"  # để "" nếu không cần SSH
-```
-
-### 2. Deploy
-
-```bash
-terraform init
-terraform plan
-terraform apply
-```
-
-> ⚠️ Sau khi apply, check email để **confirm SNS subscription**.
-
-### 3. Verify CloudWatch Agent
-
-SSH vào EC2 (hoặc dùng SSM Session Manager):
-
-```bash
-sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -m ec2 -a status
-```
-
-### 4. Trigger CPU Alarm (Stress Test)
-
-```bash
-stress --cpu 2 --timeout 600
-```
-
-Sau ~5 phút, CloudWatch Alarm chuyển sang state `ALARM` → email notification gửi qua SNS.
-
-### 5. Cleanup
-
-```bash
-terraform destroy
-```
-
----
-
-## Evidence Screenshots
-
 ### Bài 2: CPU Alarm → Email Alert via SNS
 
 #### 2.1 SNS Topic Created
@@ -65,6 +12,14 @@ terraform destroy
 ![CW Alarm Config](./evidence/cloudwatch-alarm-config.png)
 
 #### 2.4 CloudWatch Alarm - In ALARM State
+
+Chạy `stress` trên EC2 để trigger alarm, sau đó kiểm tra status của CloudWatch Agent:
+
+```bash
+stress --cpu 2 --timeout 600
+```
+
+![Stress Test](./evidence/stress-test.png)
 ![CW Alarm Triggered](./evidence/cloudwatch-alarm-triggered.png)
 
 #### 2.5 Email Notification Received
@@ -74,38 +29,56 @@ terraform destroy
 
 ### Bài 3: Installing CloudWatch Agent on EC2
 
-#### 3.1 CloudWatch Agent Installed
+#### 3.1 Verify CloudWatch Agent Installed 
+
+```bash
+sudo systemctl status amazon-cloudwatch-agent
+```
+
 ![CW Agent Install](./evidence/cw-agent-installed.png)
 
 #### 3.2 CloudWatch Agent Config
-![CW Agent Config](./evidence/cw-agent-config.png)
 
-#### 3.3 CloudWatch Agent Running (Status)
-![CW Agent Status](./evidence/cw-agent-status.png)
+```bash
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
+{
+  "agent": {
+    "metrics_collection_interval": 60,
+    "run_as_user": "root"
+  },
+  "metrics": {
+    "namespace": "CWAgent",
+    "metrics_collected": {
+      "cpu": {
+        "resources": ["*"],
+        "measurement": [
+          "cpu_usage_idle",
+          "cpu_usage_user",
+          "cpu_usage_system"
+        ],
+        "totalcpu": true,
+        "metrics_collection_interval": 60
+      },
+      "mem": {
+        "measurement": [
+          "mem_used_percent",
+          "mem_total",
+          "mem_used"
+        ],
+        "metrics_collection_interval": 60
+      },
+      "disk": {
+        "resources": ["/"],
+        "measurement": [
+          "disk_used_percent"
+        ],
+        "metrics_collection_interval": 60
+      }
+    }
+  }
+}
+EOF
+```
 
 #### 3.4 CloudWatch Metrics - CWAgent Namespace
 ![CW Metrics](./evidence/cw-agent-metrics.png)
-
----
-
-## Cấu trúc
-
-```
-├── terraform/
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   ├── userdata.sh
-│   └── terraform.tfvars.example
-├── evidence/             ← screenshots go here
-│   ├── sns-topic.png
-│   ├── sns-subscription-confirmed.png
-│   ├── cloudwatch-alarm-config.png
-│   ├── cloudwatch-alarm-triggered.png
-│   ├── email-notification.png
-│   ├── cw-agent-installed.png
-│   ├── cw-agent-config.png
-│   ├── cw-agent-status.png
-│   └── cw-agent-metrics.png
-└── README.md
-```

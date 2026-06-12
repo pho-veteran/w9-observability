@@ -5,8 +5,10 @@ set -e
 apt-get update -y
 apt-get upgrade -y
 
-# Install CloudWatch Agent
-apt-get install -y amazon-cloudwatch-agent
+# Install CloudWatch Agent (download from AWS)
+wget -q https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+dpkg -i -E amazon-cloudwatch-agent.deb
+rm -f amazon-cloudwatch-agent.deb
 
 # Install stress tool for CPU testing later
 apt-get install -y stress

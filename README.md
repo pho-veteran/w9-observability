@@ -82,3 +82,61 @@ EOF
 
 #### 3.4 CloudWatch Metrics - CWAgent Namespace
 ![CW Metrics](./evidence/cw-agent-metrics.png)
+
+---
+
+### Bài 4: Alert on AWS Root Account Login
+
+#### 4.1 Enable CloudTrail & Send Logs to CloudWatch
+
+Bật CloudTrail (multi-region) và cấu hình gửi log về CloudWatch Log Group `/aws/cloudtrail/w9-root-login-trail`.
+
+```
+Trail Name       : w9-root-login-trail
+Multi-region     : Yes
+Log Group        : /aws/cloudtrail/w9-root-login-trail
+IAM Role         : cloudtrail-to-cloudwatch-role
+```
+
+![CloudTrail Created](./evidence/cloudtrail-created.png)
+![CloudWatch Log Group](./evidence/cloudtrail-cw-logs.png)
+
+#### 4.2 Create CloudWatch Metric Filter
+
+Tạo Metric Filter trên Log Group để phát hiện sự kiện Root Account (theo CIS AWS Foundations Benchmark):
+
+```
+{ $.userIdentity.type = "Root" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != "AwsServiceEvent" }
+```
+
+```
+Filter Name      : RootLoginFilter
+Metric Namespace : CloudTrailMetrics
+Metric Name      : RootAccountEventCount
+Metric Value     : 1
+Default Value    : 0
+```
+
+![Metric Filter](./evidence/root-login-metric-filter.png)
+
+#### 4.3 Create CloudWatch Alarm
+
+Tạo Alarm dựa trên metric `RootAccountEventCount`, trigger khi có ít nhất 1 Root login trong 5 phút:
+
+```
+Alarm Name       : RootAccountLoginAlarm
+Condition        : RootAccountEventCount >= 1
+Period           : 5 minutes (300s)
+Evaluation       : 1 out of 1 datapoints
+Action           : Gửi notification tới SNS Topic root-login-sns-topic
+```
+
+![Root Login Alarm Config](./evidence/root-login-alarm.png)
+
+#### 4.4 Notify via SNS
+
+Kết nối Alarm với SNS Topic `root-login-sns-topic`, gửi email cảnh báo khi phát hiện Root Login.
+
+![Email Notification Root Login](./evidence/root-login-email.png)
+
+

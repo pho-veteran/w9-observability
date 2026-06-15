@@ -176,3 +176,140 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
 
   treat_missing_data = "notBreaching"
 }
+
+# --- Root Account Login Alert (Task 4) ---
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_s3_bucket" "cloudtrail_bucket" {
+  bucket        = "w9-cloudtrail-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_policy" "cloudtrail_policy" {
+  bucket = aws_s3_bucket.cloudtrail_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSCloudTrailAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.cloudtrail_bucket.arn
+      },
+      {
+        Sid    = "AWSCloudTrailWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.cloudtrail_bucket.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl" = "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_cloudwatch_log_group" "cloudtrail_log_group" {
+  name              = "/aws/cloudtrail/w9-root-login-trail"
+  retention_in_days = 7
+}
+
+resource "aws_iam_role" "cloudtrail_to_cw_role" {
+  name = "cloudtrail-to-cloudwatch-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "cloudtrail.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "cloudtrail_to_cw_policy" {
+  name = "cloudtrail-to-cloudwatch-policy"
+  role = aws_iam_role.cloudtrail_to_cw_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "${aws_cloudwatch_log_group.cloudtrail_log_group.arn}:*"
+      }
+    ]
+  })
+}
+
+resource "aws_cloudtrail" "root_login_trail" {
+  name                          = "w9-root-login-trail"
+  s3_bucket_name                = aws_s3_bucket.cloudtrail_bucket.id
+  include_global_service_events = true
+  is_multi_region_trail         = true
+  enable_log_file_validation    = true
+
+  cloud_watch_logs_role_arn     = aws_iam_role.cloudtrail_to_cw_role.arn
+  cloud_watch_logs_group_arn    = "${aws_cloudwatch_log_group.cloudtrail_log_group.arn}:*"
+
+  depends_on = [
+    aws_s3_bucket_policy.cloudtrail_policy,
+    aws_iam_role_policy.cloudtrail_to_cw_policy
+  ]
+}
+
+resource "aws_cloudwatch_log_metric_filter" "root_login_filter" {
+  name           = "RootLoginFilter"
+  pattern        = "{ $.userIdentity.type = \"Root\" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != \"AwsServiceEvent\" }"
+  log_group_name = aws_cloudwatch_log_group.cloudtrail_log_group.name
+
+  metric_transformation {
+    name          = "RootAccountEventCount"
+    namespace     = "CloudTrailMetrics"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_sns_topic" "root_login_sns_topic" {
+  name = "root-login-sns-topic"
+}
+
+resource "aws_sns_topic_subscription" "root_login_email_sub" {
+  topic_arn = aws_sns_topic.root_login_sns_topic.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+resource "aws_cloudwatch_metric_alarm" "root_login_alarm" {
+  alarm_name          = "RootAccountLoginAlarm"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "RootAccountEventCount"
+  namespace           = "CloudTrailMetrics"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  alarm_description   = "Alarm when AWS Root Account login is detected"
+
+  alarm_actions = [aws_sns_topic.root_login_sns_topic.arn]
+
+  treat_missing_data = "notBreaching"
+}
+

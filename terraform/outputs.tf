@@ -13,3 +13,16 @@ output "sns_topic_arn" {
 output "cloudwatch_alarm_name" {
   value = aws_cloudwatch_metric_alarm.cpu_high.alarm_name
 }
+
+output "root_login_sns_topic_arn" {
+  value = aws_sns_topic.root_login_sns_topic.arn
+}
+
+output "root_login_alarm_name" {
+  value = aws_cloudwatch_metric_alarm.root_login_alarm.alarm_name
+}
+
+output "cloudtrail_bucket_name" {
+  value = aws_s3_bucket.cloudtrail_bucket.id
+}
+

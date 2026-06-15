@@ -1,19 +1,25 @@
 #!/bin/bash
 set -e
 
-# Update system
-apt-get update -y
-apt-get upgrade -y
+# Prevent interactive prompts during package operations
+export DEBIAN_FRONTEND=noninteractive
 
-# Install CloudWatch Agent (download from AWS)
+# Update system package list
+apt-get update -y
+apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+
+# Install stress tool for simulating CPU load (Task 2)
+apt-get install -y stress
+
+# -----------------------------------------------
+# Install CloudWatch Agent (Task 3)
+# -----------------------------------------------
 wget -q https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
 dpkg -i -E amazon-cloudwatch-agent.deb
 rm -f amazon-cloudwatch-agent.deb
 
-# Install stress tool for CPU testing later
-apt-get install -y stress
-
 # Write CloudWatch Agent config
+mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
 {
   "agent": {
@@ -53,7 +59,7 @@ cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
 }
 EOF
 
-# Start CloudWatch Agent
+# Start CloudWatch Agent with the config
 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
   -a fetch-config \
   -m ec2 \

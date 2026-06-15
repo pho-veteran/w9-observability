@@ -115,3 +115,47 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -m ec2 -a 
 5. Chụp màn hình toàn bộ quá trình.
 6. Upload GitHub Public.
 7. Nộp link GitHub.
+
+---
+
+## 4. Alert on AWS Root Account Login
+
+> **Security Best Practice:** Root account gần như không nên được sử dụng. Cần cảnh báo ngay khi có login.
+
+### Mục tiêu:
+
+Thiết lập cảnh báo khi có đăng nhập bằng tài khoản AWS Root Account.
+
+### Các bước yêu cầu:
+
+1. **Enable CloudTrail & Send Logs to CloudWatch**
+
+   * Bật CloudTrail (multi-region).
+   * Cấu hình CloudTrail gửi log về CloudWatch Logs.
+
+2. **Create CloudWatch Metric Filter**
+
+   * Tạo Metric Filter trên CloudWatch Log Group nhận log từ CloudTrail.
+   * Lọc các sự kiện Root Account (theo CIS AWS Foundations Benchmark):
+
+     ```
+     { $.userIdentity.type = "Root" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != "AwsServiceEvent" }
+     ```
+
+3. **Create CloudWatch Alarm**
+
+   * Tạo Alarm dựa trên Metric Filter vừa tạo.
+   * Điều kiện: `RootAccountEventCount >= 1` trong 5 phút.
+   * Khi phát hiện Root Login thì chuyển sang trạng thái Alarm.
+
+4. **Notify via SNS**
+
+   * Kết nối Alarm với SNS Topic.
+   * Gửi email thông báo khi có Root Login.
+
+### Nộp bài:
+
+* Chụp ảnh màn hình các bước thực hiện.
+* Upload lên GitHub Public.
+* Nộp link GitHub vào form.
+
